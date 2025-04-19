@@ -1,0 +1,29 @@
+services:
+  blenderproc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 6dpose_generator_container
+    container_name: 6dpose_generator_container
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility, video, compute, graphics]
+
+    command: tail -f /dev/null     # keeps the container running
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+    volumes:
+      - ./workspace:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    shm_size: 20g
+    tty: true
+    stdin_open: true
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+      - 8.8.8.8
