@@ -338,7 +338,7 @@ def load_objects_from_folder(folder_path):
     # Find all .obj files in the folder (non-recursive)
     ply_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.ply')]
     ply_files.sort(key=lambda f: int(f.split('_')[1].split('.')[0]))
-
+    
     print(f"{GREEN}Found {len(ply_files)} OBJ files in {folder_path}{RESET}")
     
     # Load each object
@@ -524,7 +524,7 @@ def randomize_background(path, width, height):
         img = img.transpose(Image.FLIP_TOP_BOTTOM)
 
     return img
-
+    
 def detect_is_hdr(backdrop_images):
     """
     Detect if any of the provided background images are HDR.
@@ -571,54 +571,9 @@ def apply_regular_background(background_path, width, height, rendered_image):
     background.paste(rendered_image, mask=rendered_image.convert('RGBA'))
     return background
 
-    
 # ##############################################################################
 # Utility functions for my synthetic data generation
 # ##############################################################################
-def center_position():
-    """
-    Returns a fixed center position (0, 0, 0.0).
-    """
-    position = np.array([0.0, 0.0, 0.0])
-    return position
-
-def center_rotation():
-    """
-    Returns a fixed rotation matrix (identity matrix).
-    """
-    rotation = Rz(0)
-    return rotation
-
-def turn_around_rotation(degrees=180):
-    """
-    Returns a rotation matrix that turns around the Z-axis by 180 degrees.
-    """
-    radians = degrees * (pi / 180.0)
-    rotation = Rz(radians)
-    return rotation
-
-def combine_rotation(rotation1, rotation2):
-    """
-    Combines two rotation matrices.
-    """
-    return rotation1 @ rotation2
-
-def turn_around_rotation_during_frames(frameme, total_frames):
-    """
-    Returns a rotation matrix that turns around the Z-axis by 360 degrees.
-    """
-    radians = (frameme/total_frames) * (2 * np.pi)
-    rotation = Rz(radians)
-    return rotation
-
-def close_up_position(distance_min=0.0, distance_max=0.0):
-    """
-    Returns a close-up position 
-    """
-    y = random.uniform(distance_min, distance_max)
-    position = np.array([0.0, y, 0.0])
-    return position
-
 def close_up_left_right_position(distance_min=0.0, distance_max=0.0, width=10.0):
     """
     Returns a close-up position 
@@ -628,7 +583,23 @@ def close_up_left_right_position(distance_min=0.0, distance_max=0.0, width=10.0)
     position = np.array([x, y, 0.0])
     return position
 
-def hook_movement(height_min =0.0, height_max =0.0, ladle_position=None, hook_offset=0.0, x_max = 0):
+def close_up_position(distance_min=0.0, distance_max=0.0):
+    """
+    Returns a close-up position 
+    """
+    y = random.uniform(distance_min, distance_max)
+    position = np.array([0.0, y, 0.0])
+    return position
+
+def turn_around_rotation_during_frames(frameme, total_frames):
+    """
+    Returns a rotation matrix that turns around the Z-axis by 360 degrees.
+    """
+    radians = (frameme/total_frames) * (2 * np.pi)
+    rotation = Rz(radians)
+    return rotation
+
+def hook_movement(height_min =0.0, height_max =0.0, hook_offset=0.0, x_max = 0):
     """
     Returns the hook movement. the correct position at the center is -0.1, ladle y position, 0.8
     """
@@ -640,20 +611,15 @@ def hook_movement(height_min =0.0, height_max =0.0, ladle_position=None, hook_of
     else:
         local_z = height_min
 
-    # world_x = ladle_position[0] + local_x
-    # world_y = ladle_position[1] + local_y
-    # world_z = ladle_position[2] + local_z
-
     return np.array([local_x, local_y, local_z])
 
-def translation_matrix(t):
+def turn_around_rotation(degrees=180):
     """
-    Returns a 4x4 translation matrix for a given translation vector t.
+    Returns a rotation matrix that turns around the Z-axis by 180 degrees.
     """
-    T = np.eye(4)
-    T[0:3, 3] = t
-    return T
-
+    radians = degrees * (pi / 180.0)
+    rotation = Rz(radians)
+    return rotation
 
 # ##############################################################################
 # Main function
@@ -692,8 +658,7 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
     backdrop_images = load_background_images(backgrounds_folder)
 
     # Set the camera to be in front of the object
-    cam_pose = bp.math.build_transformation_mat([0, 11, 0], [np.pi / 2, 0, -np.pi]) #to keet the movemnts of the camera in y positive 
-    # cam_pose = bp.math.build_transformation_mat([0, -11, 0], [np.pi / 2, 0, 0]) # to keet the movemnts of the camera in y negative
+    cam_pose = bp.math.build_transformation_mat([0, -10, 0], [np.pi / 2, 0, 0])
     bp.camera.add_camera_pose(cam_pose)
     bp.camera.set_resolution(width, height)
     if focal_length:
@@ -706,38 +671,33 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
         bp.camera.set_intrinsics_from_blender_params(lens=0.785398, # FOV in radians
                                                      lens_unit='FOV',
                                                      clip_start=1.0, clip_end=1000.0)
-          
+        
     bp.renderer.enable_depth_output(activate_antialiasing=False)
     bp.renderer.set_max_amount_of_samples(50)
 
     for frame in tqdm(range(nb_frames), desc="Syntetic Data Creation", unit="frame"):
+
         # Place object(s)
         for idx, oo in enumerate(objects):
             # Set a random pose
             xform = np.eye(4)
 
             if idx == 0:
-                # Set the first object to be in the center
-                xform[0:3,3] = close_up_position(distance_min=-2.0, distance_max=8.0)
-                # xform[0:3,0:3] = center_rotation()
-                xform[0:3,0:3] = turn_around_rotation_during_frames(frame, nb_frames) 
-
-                pos_ladle = xform[0:3,3]
-                rot_ladle = xform[0:3,0:3]
+                xform[0:3,3] = close_up_left_right_position(distance_min=-2.0, distance_max=8.0, width=3)
+                xform[0:3,0:3] = turn_around_rotation_during_frames(frame, nb_frames)
                 ladle_transform = xform.copy()
             elif idx == 1:
-                # Set the second object to follow the movement of the fisrt object
                 xform_ladle = np.eye(4)
-                xform_ladle[0:3,3] = hook_movement(height_min=0.8, height_max=2, ladle_position=pos_ladle, hook_offset=0.65, x_max = 1.5)
+                xform_ladle[0:3,3] = hook_movement(height_min=0.8, height_max=2, hook_offset=0.65, x_max = 1.5)
                 xform_ladle[0:3,0:3] = turn_around_rotation()
                 xform = ladle_transform @ xform_ladle
             else:
-                # Randomly place the object
-                xform[0:3,3] = random_object_position(distance_min=-5.0, distance_max=5.0, width=10.0, height=10.0)
+                xform[0:3,3] = random_object_position(distance_min=2.0, distance_max=2.0, width=10.0, height=10.0)
                 xform[0:3,0:3] = random_rotation_matrix()
 
+            # local sacle
             oo.set_local2world_mat(xform)
-
+            oo.set_scale([scale, scale, scale])
             # Update location and quaternion in objects_data for DOPE format
             xform_in_cam = np.linalg.inv(bp.camera.get_camera_pose()) @ xform
             objects_data[idx]['location'] = xform_in_cam[0:3,3].tolist()
@@ -745,13 +705,13 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
             q_xyzw = [tmp_wxyz[1], tmp_wxyz[2], tmp_wxyz[3], tmp_wxyz[0]] # [x, y, z, scalar]
             objects_data[idx]['quaternion_xyzw'] = q_xyzw
             # Scale 3D model
-            oo.set_scale([scale, scale, scale])
-
+            
         # check if we have a HDR background
         is_hdr, background_path = detect_is_hdr(backdrop_images)
         # For HDR backgrounds, we need to apply before-rendering
         setup_hdr_background(background_path, is_hdr=is_hdr)
 
+        # render the cameras of the current scene
         segs = bp.renderer.render_segmap()
         data = bp.renderer.render()
         im = Image.fromarray(data['colors'][0])
@@ -760,11 +720,13 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
         if not is_hdr:
             im = apply_regular_background(background_path, width, height, im)
 
+        # Apply cube drawing for debbugging
         # im = draw_cuboid_markers(objects, bp.camera, im)
 
         # Write data in DOPE format
         filename = os.path.join(dope_data_folder, str(frame).zfill(6) + ".png")
         im.save(filename)
+
         ## Export JSON file
         filename = os.path.join(dope_data_folder, str(frame).zfill(6) + ".json")
         write_json(filename, width, height, min_pixels, bp.camera, objects, objects_data, segs['class_segmaps'][0])
@@ -777,23 +739,24 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
                             depths=data["depth"],
                             colors=data["colors"],
                             color_file_format="JPEG",
-                            ignore_dist_thres=20)
+                            ignore_dist_thres=20, 
+                            frames_per_chunk=10000)
         
+
         # Write data in YOLO6DPose format. !THIS MUST BE AFTER THE BOP BECAUSE IT USE THE SAME MASK IMAGES!
         write_data_yolo6dpose(custom6d_folder, out_directory, im, frame, width, height, bp.camera, objects, objects_data, target_obj_idx)
-        
 
 if __name__ == "__main__":
     num_id = 0
     width = 500
     height = 500
     scale = 0.01  #the object scale is meters -> scale=0.01; if it is in cm -> scale=1.0: if if it is in mm -> scale=0.001. 
-    # Also you can use whatever scale you want to make the object bigger or smaller, As long as you apply the scale consistently throughout your pipeline.
+    # Also you can use whatever scale you want to make the object bigger or smaller, As long as you apply the scale consistently throughout your pipeline. 
     outf = "datasets/"
     nb_frames = 10
     focal_length = None
     models_folder = "models/"
-    backgrounds_folder = "dome_hdri_haven/"
+    backgrounds_folder = "backgrounds/"
     min_pixels = 1
     target_obj_idx = 0 #for data yolo6dpose
 
@@ -813,30 +776,3 @@ if __name__ == "__main__":
         min_pixels=min_pixels,
         target_obj_idx = target_obj_idx
     )
-
-# pip install blenderproc
-# blenderproc run quickstart.py
-# blenderproc vis hdf5 output/0.hdf5 --save vis_result.png
-
-# /root/blender/blender-4.2.1-linux-x64/4.2/python/bin/python3.11 -m pip install pyquaternion
-# /root/blender/blender-4.2.1-linux-x64/4.2/python/bin/python3.11 -m pip install tqdm
-
-
-
-            # if idx == 0:
-            #     # Set the first object to be in the center
-            #     xform[0:3,3] = close_up_position(distance_min=-2.0, distance_max=8.0)
-            #     # xform[0:3,0:3] = center_rotation()
-            #     xform[0:3,0:3] = turn_around_rotation_during_frames(frame, nb_frames) 
-
-            #     print(f"{YELLOW}Object {idx} position: {xform[0:3,3]}{RESET}")
-            #     pos_ladle = xform[0:3,3]
-            #     rot_ladle = xform[0:3,0:3]
-            # elif idx == 1:
-            #     # Set the second object to follow the movement of the fisrt object
-            #     xform[0:3,3] = hook_movement(height_min=0.8, height_max=2, ladle_position=pos_ladle, hook_offset=0.6, x_max = 1.5)
-            #     xform[0:3,0:3] = turn_around_rotation()
-            # else:
-            #     # Randomly place the object
-            #     xform[0:3,3] = random_object_position(distance_min=-5.0, distance_max=5.0, width=10.0, height=10.0)
-            #     xform[0:3,0:3] = random_rotation_matrix()

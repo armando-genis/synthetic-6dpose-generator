@@ -623,21 +623,21 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
                                                      lens_unit='FOV',
                                                      clip_start=1.0, clip_end=1000.0)
         
-    # sample point light on shell
-    light_point = bp.types.Light()
-    light_point.set_energy(200)
-    # Sample light source
-    light_point.set_color(np.random.uniform([0.5,0.5,0.5],[1,1,1]))
-    location = bp.sampler.shell(center = [0, 0, 0], radius_min = 1, radius_max = 1.5,
-                            elevation_min = 5, elevation_max = 89)
-    light_point.set_location(location)
+    # # sample point light on shell
+    # light_point = bp.types.Light()
+    # light_point.set_energy(200)
+    # # Sample light source
+    # light_point.set_color(np.random.uniform([0.5,0.5,0.5],[1,1,1]))
+    # location = bp.sampler.shell(center = [0, 0, 0], radius_min = 1, radius_max = 1.5,
+    #                         elevation_min = 5, elevation_max = 89)
+    # light_point.set_location(location)
 
-    # Add a ground plane for reference
-    ground = bp.object.create_primitive('PLANE', scale=[10, 10, 1], location=[0, 0, -5])
-    ground_material = bp.material.create('ground_material')
-    ground_material.set_principled_shader_value("Base Color", [0.2, 0.2, 0.2, 1.0])
-    ground_material.set_principled_shader_value("Roughness", 0.5)
-    ground.replace_materials(ground_material)
+    # # Add a ground plane for reference
+    # ground = bp.object.create_primitive('PLANE', scale=[10, 10, 1], location=[0, 0, -5])
+    # ground_material = bp.material.create('ground_material')
+    # ground_material.set_principled_shader_value("Base Color", [0.2, 0.2, 0.2, 1.0])
+    # ground_material.set_principled_shader_value("Roughness", 0.5)
+    # ground.replace_materials(ground_material)
 
     bp.renderer.enable_depth_output(activate_antialiasing=False)
     bp.renderer.set_max_amount_of_samples(50)
@@ -707,7 +707,7 @@ if __name__ == "__main__":
     scale = 0.01  #the object scale is meters -> scale=0.01; if it is in cm -> scale=1.0: if if it is in mm -> scale=0.001. 
     # Also you can use whatever scale you want to make the object bigger or smaller, As long as you apply the scale consistently throughout your pipeline. 
     outf = "datasets/"
-    nb_frames = 5
+    nb_frames = 10
     focal_length = None
     models_folder = "models/"
     backgrounds_folder = "backgrounds/"
@@ -730,110 +730,3 @@ if __name__ == "__main__":
         min_pixels=min_pixels,
         target_obj_idx = target_obj_idx
     )
-
-
-
-# def write_custom6d_labels(outf, width, height, min_pixels, camera, objects, objects_data, seg_map):
-#     """
-#     Write a custom label file for 6D pose estimation with exactly 21 values per object.
-    
-#     For each visible object (i.e. with at least min_pixels in the segmentation map),
-#     the output label line consists of:
-    
-#       [0]     Class Label
-#       [1-2]   Centroid Coordinates (x0, y0) normalized by image width and height
-#       [3-18]  Corner Coordinates (x1,y1, ..., x8,y8) normalized by image width and height
-#       [19-20] Object Size Range (x_range, y_range) computed from all 9 normalized points
-      
-#     This gives a total of 21 numbers per object.
-    
-#     Args:
-#         outf (str): Output file path.
-#         width (int): Image width.
-#         height (int): Image height.
-#         min_pixels (int): Minimum number of segmentation pixels required for an object to be annotated.
-#         camera: BlenderProc camera object.
-#         objects (list): List of BlenderProc objects.
-#         objects_data (list): List of dictionaries with object metadata (must include key 'id').
-#         seg_map: Segmentation map (e.g. a NumPy array where each object has an id).
-    
-#     Returns:
-#         label_lines (list): A list of space-separated label strings written to the output file.
-#     """
-#     import numpy as np
-
-#     # Extract camera intrinsics.
-#     # Assumes camera intrinsics is in standard form:
-#     # [[fx,  0, u0],
-#     #  [ 0, fy, v0],
-#     #  [ 0,  0,  1]]
-#     K = camera.get_intrinsics_as_K_matrix()
-#     fx = K[0][0]
-#     fy = K[1][1]
-#     u0 = K[0][2] if len(K[0]) > 2 else 0.0
-#     v0 = K[1][2] if len(K[1]) > 2 else 0.0
-
-#     print(f"Camera intrinsics: fx={fx}, fy={fy}, u0={u0}, v0={v0}")
-
-#     # In this implementation we assume sensor size equals the provided width and height.
-#     sensor_w, sensor_h = width, height
-
-#     label_lines = []
-    
-#     for ii, obj in enumerate(objects):
-#         # Assume object IDs in segmentation start at 1.
-#         obj_id = ii + 1
-#         num_pixels = int(np.sum(seg_map == obj_id))
-#         if num_pixels < min_pixels:
-#             continue
-
-#         # Use your provided function to get the 9 projected points.
-#         # It should return 9 points where indices 0-7 are the corners
-#         # and index 8 is the centroid.
-#         cuboid_points = get_cuboid_image_space(obj, camera)
-        
-#         # Extract the centroid and corners.
-#         centroid = cuboid_points[8]  # assuming index 8 stores the centroid.
-#         corners = cuboid_points[0:8]
-
-#         # Normalize the 2D coordinates by dividing by image width and height.
-#         centroid_norm = [centroid[0] / width, centroid[1] / height]
-#         corners_norm = [[pt[0] / width, pt[1] / height] for pt in corners]
-        
-#         # Combine into a list of 9 points (centroid then 8 corners).
-#         # This yields 9*2 = 18 numbers.
-#         points = centroid_norm + [coord for corner in corners_norm for coord in corner]
-        
-#         # Compute the normalized size range over all 9 points.
-#         all_x = [pt[0] for pt in ([centroid_norm] + corners_norm)]
-#         all_y = [pt[1] for pt in ([centroid_norm] + corners_norm)]
-#         x_range = max(all_x) - min(all_x)
-#         y_range = max(all_y) - min(all_y)
-        
-#         # Assemble the 21 values:
-#         # 1. Class label (from objects_data)
-#         # 2. 18 values: (centroid + 8 corners, each normalized)
-#         # 3. 2 values: Object size range (x_range, y_range)
-#         label_values = [objects_data[ii]['id']] + points + [x_range, y_range]
-        
-#         # Append additional 8 values:
-#         # Focal Length: fx, fy
-#         # Sensor Size: sensor_w, sensor_h
-#         # Focal Offsets: u0, v0
-#         # Image Dimensions: width, height
-#         label_values.extend([fx, fy, sensor_w, sensor_h, u0, v0, width, height])
-        
-#         # Verify that we have exactly 29 values.
-#         if len(label_values) != 29:
-#             raise ValueError(f"Label for object {ii} has {len(label_values)} values; expected 29.")
-        
-#         # Format as space-separated floating-point numbers.
-#         label_line = " ".join(f"{val:.6f}" for val in label_values)
-#         label_lines.append(label_line)
-    
-#     # Write out all label lines to the output file.
-#     with open(outf, "w") as f:
-#         for line in label_lines:
-#             f.write(line + "\n")
-    
-#     return label_lines

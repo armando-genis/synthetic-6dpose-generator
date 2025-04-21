@@ -16,4 +16,11 @@ blenderproc quickstart
 /root/blender/blender-4.2.1-linux-x64/4.2/python/bin/python3.11 -m pip install pyquaternion
 /root/blender/blender-4.2.1-linux-x64/4.2/python/bin/python3.11 -m pip install tqdm
 
+blenderproc run syntetic_data_dope.py 
 
+
+pip3 install albumentations
+pip3 install torch
+pip3 install torchvision
+
+python3 debug.py --data /workspace/generator/datasets/dope_data
