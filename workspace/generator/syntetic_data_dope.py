@@ -229,10 +229,10 @@ def write_json(outf, width, height, min_pixels, camera, objects, objects_data, s
                 ]
             },
             'intrinsics':{
-                'fx':K[0][0],
-                'fy':K[1][1],
-                'cx':K[2][0],
-                'cy':K[2][1]
+                'fx': K[0][0],  # Focal length in x direction
+                'fy': K[1][1],  # Focal length in y direction
+                'cx': K[2][0],  # Principal point x-coordinate (center of projection)
+                'cy': K[2][1]   # Principal point y-coordinate
             }
         },
         "objects" : []
@@ -658,7 +658,7 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
     backdrop_images = load_background_images(backgrounds_folder)
 
     # Set the camera to be in front of the object
-    cam_pose = bp.math.build_transformation_mat([0, -10, 0], [np.pi / 2, 0, 0])
+    cam_pose = bp.math.build_transformation_mat([0, -12, 0], [np.pi / 2, 0, 0])
     bp.camera.add_camera_pose(cam_pose)
     bp.camera.set_resolution(width, height)
     if focal_length:
@@ -683,7 +683,7 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
             xform = np.eye(4)
 
             if idx == 0:
-                xform[0:3,3] = close_up_left_right_position(distance_min=-2.0, distance_max=8.0, width=3)
+                xform[0:3,3] = close_up_left_right_position(distance_min=-8.0, distance_max=2.0, width=3)
                 xform[0:3,0:3] = turn_around_rotation_during_frames(frame, nb_frames)
                 ladle_transform = xform.copy()
             elif idx == 1:
@@ -692,10 +692,10 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
                 xform_ladle[0:3,0:3] = turn_around_rotation()
                 xform = ladle_transform @ xform_ladle
             else:
-                xform[0:3,3] = random_object_position(distance_min=2.0, distance_max=2.0, width=10.0, height=10.0)
+                xform[0:3,3] = random_object_position(distance_min=-5.0, distance_max=5.0, width=10.0, height=10.0)
                 xform[0:3,0:3] = random_rotation_matrix()
 
-            # local sacle
+            # Scale 3D model
             oo.set_local2world_mat(xform)
             oo.set_scale([scale, scale, scale])
             # Update location and quaternion in objects_data for DOPE format
@@ -704,7 +704,7 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
             tmp_wxyz = Quaternion(matrix=xform_in_cam[0:3,0:3]).elements  # [scalar, x, y, z]
             q_xyzw = [tmp_wxyz[1], tmp_wxyz[2], tmp_wxyz[3], tmp_wxyz[0]] # [x, y, z, scalar]
             objects_data[idx]['quaternion_xyzw'] = q_xyzw
-            # Scale 3D model
+
             
         # check if we have a HDR background
         is_hdr, background_path = detect_is_hdr(backdrop_images)
