@@ -15,6 +15,7 @@ blenderproc quickstart
 
 /root/blender/blender-4.2.1-linux-x64/4.2/python/bin/python3.11 -m pip install pyquaternion
 /root/blender/blender-4.2.1-linux-x64/4.2/python/bin/python3.11 -m pip install tqdm
+/root/blender/blender-4.2.1-linux-x64/4.2/python/bin/python3.11 -m pip install torch
 
 blenderproc run syntetic_data_dope.py 
 

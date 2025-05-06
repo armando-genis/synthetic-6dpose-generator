@@ -18,6 +18,9 @@ import sys
 from tqdm import tqdm
 from time import sleep
 import shutil
+import gc
+import time
+import torch
 
 # Define color codes for console output
 RED = "\033[1;31m"
@@ -549,13 +552,13 @@ def setup_hdr_background(background_path, is_hdr=False):
     """
     if is_hdr:
         # For HDR backgrounds, set up as world environment
-        strength = random.random() + 0.5  # 0.5 to 1.5
+        strength = random.random() + 0.1 
         rotation = [
             random.random() * 0.2 - 0.1,  # Small random rotation in X
             random.random() * 0.2 - 0.1,  # Small random rotation in Y
-            random.random() * 0.2 - 0.1   # Small random rotation in Z
+            random.random() * 1.0 - 1.0   # Small random rotation in Z
         ]
-        set_world_background_hdr(background_path, strength, rotation)
+        set_world_background_hdr(filename=background_path, strength=strength, rotation_euler=rotation)
         bp.renderer.set_output_format(enable_transparency=False)
     else:
         # For regular images, just configure the renderer
@@ -563,13 +566,73 @@ def setup_hdr_background(background_path, is_hdr=False):
 
 def apply_regular_background(background_path, width, height, rendered_image):
     """
-    Applies a regular (non-HDR) background to a rendered image.
+    Applies a regular (non-HDR) background to a rendered image without distortion.
+    Resizes based on height to maintain aspect ratio, then center crops to the required width.
     """
-    background = randomize_background(background_path, width, height)
-    background = background.convert('RGB') # some images may be B&W
-    # Pasting the current image on the selected background
-    background.paste(rendered_image, mask=rendered_image.convert('RGBA'))
+    # Open the background image
+    background = Image.open(background_path)
+    
+    # Get original dimensions
+    bg_width, bg_height = background.size
+    
+    # Calculate the scaling factor based on height
+    scale_factor = height / bg_height
+    
+    # Calculate new width after scaling by height
+    new_width = int(bg_width * scale_factor)
+    
+    # Resize the image based on height while maintaining aspect ratio
+    background = background.resize((new_width, height), Image.Resampling.LANCZOS)
+    
+    # If the new width is larger than our target width, center crop
+    if new_width > width:
+        # Calculate left and right positions for cropping
+        left = (new_width - width) // 2
+        right = left + width
+        
+        # Crop the image to the desired width from the center
+        background = background.crop((left, 0, right, height))
+    else:
+        # If the new width is smaller, create a new canvas and center the image
+        new_bg = Image.new('RGB', (width, height), (0, 0, 0))
+        paste_x = (width - new_width) // 2
+        new_bg.paste(background, (paste_x, 0))
+        background = new_bg
+    
+    # Convert to RGB in case it's grayscale or has alpha channel
+    background = background.convert('RGB')
+    
+    # Paste the rendered image onto the background using its alpha channel as mask
+    background.paste(rendered_image, (0, 0), mask=rendered_image.convert('RGBA'))
+    
     return background
+
+def reset_world_lighting():
+    """Reset world lighting to default to clear any HDR influence"""
+    # Get the world node tree
+    world = bpy.context.scene.world
+    if world is None:
+        # Create a new world if none exists
+        world = bpy.data.worlds.new("World")
+        bpy.context.scene.world = world
+        
+    # Clear existing nodes
+    world.node_tree.nodes.clear()
+    
+    # Create a new Background node
+    background_node = world.node_tree.nodes.new(type="ShaderNodeBackground")
+    # Set default color (black or gray)
+    background_node.inputs["Color"].default_value = (0.05, 0.05, 0.05, 1.0)
+    background_node.inputs["Strength"].default_value = 1.0
+    
+    # Create output node
+    output_node = world.node_tree.nodes.new(type="ShaderNodeOutputWorld")
+    
+    # Link nodes
+    world.node_tree.links.new(
+        background_node.outputs["Background"], 
+        output_node.inputs["Surface"]
+    )
 
 # ##############################################################################
 # Utility functions for my synthetic data generation
@@ -580,6 +643,8 @@ def close_up_left_right_position(distance_min=0.0, distance_max=0.0, width=10.0)
     """
     x = random.uniform(-width/2, width/2)
     y = random.uniform(distance_min, distance_max)
+    # print y 
+    print(f"close_up_left_right_position: {y}")
     position = np.array([x, y, 0.0])
     return position
 
@@ -596,6 +661,17 @@ def turn_around_rotation_during_frames(frameme, total_frames):
     Returns a rotation matrix that turns around the Z-axis by 360 degrees.
     """
     radians = (frameme/total_frames) * (2 * np.pi)
+    rotation = Rz(radians)
+    return rotation
+
+def turn_around_rotation_during_frames_20(frame_number, total_frames):
+    # Calculate how many degrees to rotate per frame (90° ÷ 20 = 4.5° per frame)
+    degrees_per_frame = 2.25
+    
+    # Calculate the current angle in radians
+    radians = (frame_number % 20) * (degrees_per_frame * np.pi / 180)
+    
+    # Generate rotation matrix around Z-axis
     rotation = Rz(radians)
     return rotation
 
@@ -621,12 +697,157 @@ def turn_around_rotation(degrees=180):
     rotation = Rz(radians)
     return rotation
 
+def car_movements(transform, z_offset=-3.0, y_offset=-0.5):
+
+    # Extract position from transform matrix
+
+    z_max = -0.9
+    z_steps = np.arange(z_offset, z_max, 0.2)
+    z_value = np.random.choice(z_steps)
+    local_x = transform[0, 3] 
+    local_y = transform[1, 3] + y_offset
+    local_z = transform[2, 3] + z_value
+    
+    return np.array([local_x, local_y, local_z])
+
+
+
+# def clear_scene():
+#     """Clear all objects from the Blender scene to free memory"""
+#     for obj in bpy.data.objects:
+#         bpy.data.objects.remove(obj)
+#     for mesh in bpy.data.meshes:
+#         bpy.data.meshes.remove(mesh)
+#     for mat in bpy.data.materials:
+#         bpy.data.materials.remove(mat)
+#     for img in bpy.data.images:
+#         bpy.data.images.remove(img)
+#     gc.collect()  # Force garbage collection
+
+# def free_cuda_memory():
+#     """Force CUDA to clean up memory"""
+#     import ctypes
+#     try:
+#         _cudart = ctypes.CDLL('libcudart.so')
+#         _cudart.cudaDeviceReset()
+#     except:
+#         pass  # Library not found, skip
+
+# def clear_scene():
+#     """Clear all objects from the Blender scene to free memory"""
+#     print(f"{BLUE}Clearing scene objects and materials...{RESET}")
+    
+#     # Remove objects in a safe manner
+#     if hasattr(bpy, 'data') and hasattr(bpy.data, 'objects'):
+#         for obj in list(bpy.data.objects):
+#             if obj.users == 0:
+#                 continue  # Skip already orphaned objects
+#             try:
+#                 bpy.data.objects.remove(obj, do_unlink=True)
+#             except Exception as e:
+#                 print(f"{YELLOW}Warning: Could not remove object: {e}{RESET}")
+                
+#     # Clear other Blender data blocks
+#     for collection_name in ['meshes', 'materials', 'textures', 'images', 
+#                            'lights', 'cameras', 'node_groups', 'worlds']:
+#         collection = getattr(bpy.data, collection_name, None)
+#         if collection is not None:
+#             for item in list(collection):
+#                 if item.users == 0:
+#                     continue  # Skip already orphaned data
+#                 try:
+#                     collection.remove(item)
+#                 except Exception as e:
+#                     print(f"{YELLOW}Warning: Could not remove {collection_name} item: {e}{RESET}")
+    
+#     # Force Python garbage collection
+#     gc.collect()
+#     print(f"{GREEN}Scene cleared successfully{RESET}")
+
+def clear_scene():
+    """Clear all objects from the Blender scene to free memory"""
+    print(f"{BLUE}Clearing scene objects and materials...{RESET}")
+    
+    # Deselect all objects first
+    if bpy.context.selected_objects:
+        bpy.ops.object.select_all(action='DESELECT')
+        
+    # Select and delete all objects
+    for obj in list(bpy.data.objects):
+        obj.select_set(True)
+    bpy.ops.object.delete()
+    
+    # Clear other data blocks more aggressively
+    for collection_name in ['meshes', 'materials', 'textures', 'images', 
+                           'lights', 'cameras', 'node_groups']:
+        collection = getattr(bpy.data, collection_name)
+        for item in list(collection):
+            if item.users == 0:
+                continue
+            collection.remove(item)
+    
+    # Reset world settings
+    if bpy.context.scene.world:
+        bpy.data.worlds.remove(bpy.context.scene.world)
+    
+    # Force Python garbage collection
+    gc.collect()
+    print(f"{GREEN}Scene cleared successfully{RESET}")
+
+def free_cuda_memory():
+    """Force CUDA to clean up memory"""
+    print(f"{BLUE}Attempting to free CUDA memory...{RESET}")
+    
+    # # First, try PyTorch's cache clearing
+    # try:
+    #     torch.cuda.empty_cache()
+    #     print(f"{GREEN}Torch CUDA cache emptied{RESET}")
+    # except Exception as e:
+    #     print(f"{YELLOW}PyTorch CUDA cache emptying failed: {e}{RESET}")
+    
+    # Then try CUDA runtime API
+    try:
+        import ctypes
+        _cudart = ctypes.CDLL('libcudart.so')
+        
+        # First synchronize context to ensure all ops are complete
+        ret = _cudart.cudaDeviceSynchronize()
+        if ret != 0:
+            print(f"{YELLOW}CUDA synchronization returned code: {ret}{RESET}")
+            
+        # Then try to reset device
+        ret = _cudart.cudaDeviceReset()
+        if ret == 0:
+            print(f"{GREEN}CUDA device reset successful{RESET}")
+        else:
+            print(f"{YELLOW}CUDA device reset returned code: {ret}{RESET}")
+    except Exception as e:
+        print(f"{YELLOW}CUDA reset via ctypes failed: {e}{RESET}")
+
+def memory_cleanup():
+    """Complete memory cleanup routine"""
+    clear_scene()
+    free_cuda_memory()
+    gc.collect()
+    time.sleep(0.5)  # Short pause to allow async operations to complete
+    print(f"{GREEN}Memory cleanup completed{RESET}")
+
+
 # ##############################################################################
 # Main function
 # ##############################################################################
 
 def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, models_folder=None, backgrounds_folder=None, min_pixels=1, target_obj_idx=None):
 
+
+    memory_cleanup()
+
+    print("Memory cleared at start of function")
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["NVIDIA_DRIVER_CAPABILITIES"] = "all"
+
+    
     # Make output directories
     out_directory = os.path.join(outf)
     os.makedirs(out_directory, exist_ok=True)
@@ -641,7 +862,7 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
 
     # Set up blenderproc
     bp.init()
-        
+    
     # Renderer setup
     bp.renderer.set_output_format('PNG')
     bp.renderer.set_render_devices(desired_gpu_ids=[0])
@@ -673,87 +894,117 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
                                                      clip_start=1.0, clip_end=1000.0)
         
     bp.renderer.enable_depth_output(activate_antialiasing=False)
-    bp.renderer.set_max_amount_of_samples(50)
+    bp.renderer.set_max_amount_of_samples(25)
 
     for frame in tqdm(range(nb_frames), desc="Syntetic Data Creation", unit="frame"):
+        try:
+            reset_world_lighting()
 
-        # Place object(s)
-        for idx, oo in enumerate(objects):
-            # Set a random pose
-            xform = np.eye(4)
+            # Place object(s)
+            for idx, oo in enumerate(objects):
+                # Set a random pose
+                xform = np.eye(4)
 
-            if idx == 0:
-                xform[0:3,3] = close_up_left_right_position(distance_min=-8.0, distance_max=2.0, width=3)
-                xform[0:3,0:3] = turn_around_rotation_during_frames(frame, nb_frames)
-                ladle_transform = xform.copy()
-            elif idx == 1:
-                xform_ladle = np.eye(4)
-                xform_ladle[0:3,3] = hook_movement(height_min=0.8, height_max=2, hook_offset=0.65, x_max = 1.5)
-                xform_ladle[0:3,0:3] = turn_around_rotation()
-                xform = ladle_transform @ xform_ladle
-            else:
-                xform[0:3,3] = random_object_position(distance_min=-5.0, distance_max=5.0, width=10.0, height=10.0)
-                xform[0:3,0:3] = random_rotation_matrix()
+                if idx == 0:
+                    xform[0:3,3] = close_up_left_right_position(distance_min=-9.0, distance_max=-5, width=3.5)
+                    xform[0:3,0:3] = turn_around_rotation() @ turn_around_rotation_during_frames_20(frame, nb_frames)
+                    # xform[0:3,0:3] = turn_around_rotation(degrees=180)
 
-            # Scale 3D model
-            oo.set_local2world_mat(xform)
-            oo.set_scale([scale, scale, scale])
-            # Update location and quaternion in objects_data for DOPE format
-            xform_in_cam = np.linalg.inv(bp.camera.get_camera_pose()) @ xform
-            objects_data[idx]['location'] = xform_in_cam[0:3,3].tolist()
-            tmp_wxyz = Quaternion(matrix=xform_in_cam[0:3,0:3]).elements  # [scalar, x, y, z]
-            q_xyzw = [tmp_wxyz[1], tmp_wxyz[2], tmp_wxyz[3], tmp_wxyz[0]] # [x, y, z, scalar]
-            objects_data[idx]['quaternion_xyzw'] = q_xyzw
+
+                    ladle_transform = xform.copy()
+                elif idx == 1:
+                    xform_hook = np.eye(4)
+                    xform_hook[0:3,3] = hook_movement(height_min=0.8, height_max=2, hook_offset=0.65, x_max = 1.5)
+                    xform_hook[0:3,0:3] = turn_around_rotation(degrees=180)
+                    xform = ladle_transform @ xform_hook
+                elif idx == 2:
+                    xform[0:3,3] = car_movements(ladle_transform, z_offset=-3)
+                    xform[0:3,0:3] = turn_around_rotation(degrees=180)
+                else:
+                    xform[0:3,3] = random_object_position(distance_min=-9.0, distance_max=-1.0, width=10.0, height=10.0)
+                    xform[0:3,0:3] = random_rotation_matrix()
+
+                # Scale 3D model
+                oo.set_local2world_mat(xform)
+                oo.set_scale([scale, scale, scale])
+                # Update location and quaternion in objects_data for DOPE format
+                xform_in_cam = np.linalg.inv(bp.camera.get_camera_pose()) @ xform
+                objects_data[idx]['location'] = xform_in_cam[0:3,3].tolist()
+                tmp_wxyz = Quaternion(matrix=xform_in_cam[0:3,0:3]).elements  # [scalar, x, y, z]
+                q_xyzw = [tmp_wxyz[1], tmp_wxyz[2], tmp_wxyz[3], tmp_wxyz[0]] # [x, y, z, scalar]
+                objects_data[idx]['quaternion_xyzw'] = q_xyzw
+
+                
+            # check if we have a HDR background
+            is_hdr, background_path = detect_is_hdr(backdrop_images)
+            # For HDR backgrounds, we need to apply before-rendering
+            setup_hdr_background(background_path, is_hdr=is_hdr)
+
+            try:
+
+                # render the cameras of the current scene
+                segs = bp.renderer.render_segmap()
+                data = bp.renderer.render()
+                im = Image.fromarray(data['colors'][0])
+
+                # For non-HDR backgrounds, we need to apply post-rendering
+                if not is_hdr:
+                    im = apply_regular_background(background_path, width, height, im)
+
+                # Apply cube drawing for debbugging
+                # im = draw_cuboid_markers(objects, bp.camera, im)
+
+                # Write data in DOPE format
+                filename = os.path.join(dope_data_folder, str(frame).zfill(6) + ".png")
+                im.save(filename)
+
+                ## Export JSON file
+                filename = os.path.join(dope_data_folder, str(frame).zfill(6) + ".json")
+                write_json(filename, width, height, min_pixels, bp.camera, objects, objects_data, segs['class_segmaps'][0])
+
+                # Write data in bop format
+                im_array = np.array(im)
+                bp.writer.write_bop(os.path.join(out_directory, 'bop_data'),
+                                    target_objects=objects,
+                                    dataset='lm',
+                                    depth_scale=1.0,
+                                    depths=data["depth"],
+                                    colors=[im_array],
+                                    color_file_format="JPEG",
+                                    ignore_dist_thres=20, 
+                                    frames_per_chunk=25000)
+                
+
+                # Write data in YOLO6DPose format. !THIS MUST BE AFTER THE BOP BECAUSE IT USE THE SAME MASK IMAGES!
+                write_data_yolo6dpose(custom6d_folder, out_directory, im, frame, width, height, bp.camera, objects, objects_data, target_obj_idx)
+
+            except Exception as e:
+                print(f"{RED}Error in rendering frame {frame}: {e}{RESET}")
+                # Force memory cleanup
+                memory_cleanup()
+                # Try to continue with the next frame
+                continue
+
+        except Exception as e:
+            print(f"{RED}Fatal error at frame {frame}: {e}{RESET}")
+            memory_cleanup()
+            # Try to continue with next batch
+            break
+
+        free_cuda_memory()
 
             
-        # check if we have a HDR background
-        is_hdr, background_path = detect_is_hdr(backdrop_images)
-        # For HDR backgrounds, we need to apply before-rendering
-        setup_hdr_background(background_path, is_hdr=is_hdr)
+    print(f"{GREEN}Data generation complete! Generated {nb_frames} frames.{RESET}")
 
-        # render the cameras of the current scene
-        segs = bp.renderer.render_segmap()
-        data = bp.renderer.render()
-        im = Image.fromarray(data['colors'][0])
-
-        # For non-HDR backgrounds, we need to apply post-rendering
-        if not is_hdr:
-            im = apply_regular_background(background_path, width, height, im)
-
-        # Apply cube drawing for debbugging
-        # im = draw_cuboid_markers(objects, bp.camera, im)
-
-        # Write data in DOPE format
-        filename = os.path.join(dope_data_folder, str(frame).zfill(6) + ".png")
-        im.save(filename)
-
-        ## Export JSON file
-        filename = os.path.join(dope_data_folder, str(frame).zfill(6) + ".json")
-        write_json(filename, width, height, min_pixels, bp.camera, objects, objects_data, segs['class_segmaps'][0])
-
-        # Write data in bop format
-        bp.writer.write_bop(os.path.join(out_directory, 'bop_data'),
-                            target_objects=objects,
-                            dataset='lm',
-                            depth_scale=1.0,
-                            depths=data["depth"],
-                            colors=data["colors"],
-                            color_file_format="JPEG",
-                            ignore_dist_thres=20, 
-                            frames_per_chunk=10000)
-        
-
-        # Write data in YOLO6DPose format. !THIS MUST BE AFTER THE BOP BECAUSE IT USE THE SAME MASK IMAGES!
-        write_data_yolo6dpose(custom6d_folder, out_directory, im, frame, width, height, bp.camera, objects, objects_data, target_obj_idx)
 
 if __name__ == "__main__":
     num_id = 0
-    width = 500
-    height = 500
+    width = 512
+    height = 512
     scale = 0.01  #the object scale is meters -> scale=0.01; if it is in cm -> scale=1.0: if if it is in mm -> scale=0.001. 
     # Also you can use whatever scale you want to make the object bigger or smaller, As long as you apply the scale consistently throughout your pipeline. 
-    outf = "datasets/"
-    nb_frames = 10
+    outf = "datasets_big_1/"
+    nb_frames = 25000
     focal_length = None
     models_folder = "models/"
     backgrounds_folder = "backgrounds/"

@@ -686,15 +686,16 @@ def main(num_id, width, height, scale, outf, nb_frames, focal_length=None, model
         write_json(filename, width, height, min_pixels, bp.camera, objects, objects_data, segs['class_segmaps'][0])
 
         # Write data in bop format
+        im_array = np.array(im)
         bp.writer.write_bop(os.path.join(out_directory, 'bop_data'),
                             target_objects=objects,
                             dataset='lm',
                             depth_scale=1.0,
                             depths=data["depth"],
-                            colors=data["colors"],
+                            colors=[im_array],
                             color_file_format="JPEG",
                             ignore_dist_thres=20, 
-                            frames_per_chunk=10000)
+                            frames_per_chunk=nb_frames)
         
 
         # Write data in YOLO6DPose format. !THIS MUST BE AFTER THE BOP BECAUSE IT USE THE SAME MASK IMAGES!
@@ -707,7 +708,7 @@ if __name__ == "__main__":
     scale = 0.01  #the object scale is meters -> scale=0.01; if it is in cm -> scale=1.0: if if it is in mm -> scale=0.001. 
     # Also you can use whatever scale you want to make the object bigger or smaller, As long as you apply the scale consistently throughout your pipeline. 
     outf = "datasets/"
-    nb_frames = 10
+    nb_frames = 30
     focal_length = None
     models_folder = "models/"
     backgrounds_folder = "backgrounds/"
